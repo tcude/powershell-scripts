@@ -146,42 +146,37 @@ function Set-PowerProfile {
     )
     
     try {
-        $powerScheme = powercfg /getactivescheme
-        $schemeGuid = ($powerScheme -split ' ')[3]
+        Write-Host "`nSetting $profileName profile..." -ForegroundColor Yellow
         
-        # GUID for Processor Power Management
-        $subGroupGuid = "54533251-82be-4824-96c1-47b60b740d00"
-        # GUID for Maximum Processor State
-        $maxProcessorGuid = "bc5038f7-23e0-4960-96da-33abaf5935ec"
-        # GUID for Minimum Processor State
-        $minProcessorGuid = "893dee8e-2bef-41e0-89c6-b55d0929964c"
-
         switch ($profileName) {
             "Performance" {
-                Write-Host "`nSetting Performance Profile..." -ForegroundColor Yellow
+                # Set system power mode to Best Performance
+                Set-SystemPowerMode "BestPerformance"
                 # Set max processor state to 100%
-                powercfg /setacvalueindex $schemeGuid $subGroupGuid $maxProcessorGuid 100
-                # Set min processor state to 50%
-                powercfg /setacvalueindex $schemeGuid $subGroupGuid $minProcessorGuid 50
+                Set-MaxProcessorState 100
             }
             "BatterySaver" {
-                Write-Host "`nSetting Battery Saver Profile..." -ForegroundColor Yellow
+                # Set system power mode to Best Power Efficiency
+                Set-SystemPowerMode "BestEfficiency"
                 # Set max processor state to 99%
-                powercfg /setacvalueindex $schemeGuid $subGroupGuid $maxProcessorGuid 99
-                # Set min processor state to 5%
-                powercfg /setacvalueindex $schemeGuid $subGroupGuid $minProcessorGuid 5
+                Set-MaxProcessorState 99
             }
         }
-
-        # Apply changes
-        powercfg /setactive $schemeGuid
         
         Write-Host "Successfully applied $profileName profile" -ForegroundColor Green
         Write-Host "Changes made:"
         Get-CurrentPowerSettings
+        
+        # Add pause to see any error messages
+        Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
+        Read-Host
     }
     catch {
         Write-Host "Error setting power profile: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Stack trace: $($_.Exception.StackTrace)" -ForegroundColor Red
+        # Add pause to see error messages
+        Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
+        Read-Host
     }
 }
 
@@ -288,7 +283,6 @@ public class PowerSettings
     }
 }
 
-# Update the Get-CurrentSystemPowerMode function to match
 function Get-CurrentSystemPowerMode {
     try {
         $source = @"
@@ -323,33 +317,6 @@ public class PowerSettings
     }
 }
 
-# Add this function to show current power mode
-function Get-CurrentSystemPowerMode {
-    try {
-        $powerScheme = powercfg /getactivescheme
-        $schemeGuid = ($powerScheme -split ' ')[3]
-        
-        # Try to get the performance boost mode
-        $output = powercfg /q $schemeGuid SUB_PROCESSOR PERFBOOSTMODE
-        
-        if ($output -match "Current AC Power Setting: (0x[0-9a-fA-F]+)") {
-            $value = [Convert]::ToInt32($matches[1], 16)
-            switch ($value) {
-                0 { return "Best Power Efficiency" }
-                1 { return "Balanced" }
-                2 { return "Best Performance" }
-                default { return "Unknown ($value)" }
-            }
-        }
-        
-        return "Unknown"
-    }
-    catch {
-        return "Error getting power mode"
-    }
-}
-
-# Add this function
 function Restore-DefaultPowerSettings {
     try {
         Write-Host "`nRestoring default power settings..." -ForegroundColor Yellow
