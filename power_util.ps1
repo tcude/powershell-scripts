@@ -1,3 +1,26 @@
+$source = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class PowerSettings
+{
+    [DllImport("powrprof.dll", SetLastError = true)]
+    public static extern uint PowerSetActiveOverlayScheme(Guid OverlayScheme);
+
+    [DllImport("powrprof.dll", SetLastError = true)]
+    public static extern uint PowerGetEffectiveOverlayScheme(out Guid EffectiveOverlay);
+}
+"@
+
+try {
+    Add-Type -TypeDefinition $source -Language CSharp
+} catch {
+    # If the type is already defined, we can safely ignore this error
+    if (-not ($_.Exception.Message -like "*The type name 'PowerSettings' already exists*")) {
+        Write-Host "Error defining PowerSettings type: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
 function Show-Menu {
     Clear-Host
     Write-Host "================ Power Management Utility ================"
@@ -217,23 +240,6 @@ function Set-SystemPowerMode {
     )
     
     try {
-        # Create a Windows Runtime type for power management
-        $source = @"
-using System;
-using System.Runtime.InteropServices;
-
-public class PowerSettings
-{
-    [DllImport("powrprof.dll", SetLastError = true)]
-    public static extern uint PowerSetActiveOverlayScheme(Guid OverlayScheme);
-
-    [DllImport("powrprof.dll", SetLastError = true)]
-    public static extern uint PowerGetEffectiveOverlayScheme(out Guid EffectiveOverlay);
-}
-"@
-
-        Add-Type -TypeDefinition $source -Language CSharp
-
         # Define the GUIDs for each power mode
         $powerModeGuids = @{
             "BestPerformance" = [Guid]"ded574b5-45a0-4f42-8737-46345c09c238"  # Performance
@@ -285,19 +291,6 @@ public class PowerSettings
 
 function Get-CurrentSystemPowerMode {
     try {
-        $source = @"
-using System;
-using System.Runtime.InteropServices;
-
-public class PowerSettings
-{
-    [DllImport("powrprof.dll", SetLastError = true)]
-    public static extern uint PowerGetEffectiveOverlayScheme(out Guid EffectiveOverlay);
-}
-"@
-
-        Add-Type -TypeDefinition $source -Language CSharp
-
         $effectiveScheme = [Guid]::Empty
         $result = [PowerSettings]::PowerGetEffectiveOverlayScheme([ref]$effectiveScheme)
 
