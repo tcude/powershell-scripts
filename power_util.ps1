@@ -25,6 +25,7 @@ function Show-Menu {
     Clear-Host
     Write-Host "================ Power Management Utility ================"
     Write-Host "1: Switch Power Profile"
+    Write-Host "2: Graphics Settings"
     Write-Host "R: Restore Default Power Settings"
     Write-Host "Q: Quit"
     Write-Host "====================================================="
@@ -48,6 +49,16 @@ function Show-SystemPowerModeMenu {
     Write-Host "3: Best Power Efficiency"
     Write-Host "B: Back to Profile Menu"
     Write-Host "==============================================="
+}
+
+function Show-GraphicsMenu {
+    Clear-Host
+    Write-Host "================ Graphics Settings ================"
+    Write-Host "1: Use Integrated Graphics (Power Saving)"
+    Write-Host "2: Use NVIDIA GPU (High Performance)"
+    Write-Host "3: Show Current Graphics Status"
+    Write-Host "B: Back to Main Menu"
+    Write-Host "================================================"
 }
 
 function Set-PowerProfile {
@@ -115,6 +126,36 @@ function Get-CurrentPowerSettings {
         Write-Host "  Maximum Processor State: $currentMax%" -ForegroundColor Cyan
         Write-Host "  Minimum Processor State: $minValue%" -ForegroundColor Cyan
         Write-Host "  System Power Mode: $currentMode" -ForegroundColor Cyan
+        
+        # Get and display current GPU preference
+        $regPath = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+        if (Test-Path $regPath) {
+            $preference = Get-ItemProperty -Path $regPath -Name "DirectXUserGlobalSettings" -ErrorAction SilentlyContinue
+            if ($preference -and $preference.DirectXUserGlobalSettings) {
+                $gpuSetting = switch ($preference.DirectXUserGlobalSettings) {
+                    "GpuPreference=1;" { "Integrated Graphics" }
+                    "GpuPreference=2;" { "NVIDIA GPU" }
+                    default { "System Default" }
+                }
+                Write-Host "  Graphics Preference: $gpuSetting" -ForegroundColor Cyan
+            } else {
+                Write-Host "  Graphics Preference: System Default" -ForegroundColor Cyan
+            }
+        } else {
+            Write-Host "  Graphics Preference: System Default" -ForegroundColor Cyan
+        }
+        
+        # Get cooling policy if available
+        $coolingPolicy = powercfg /q $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 2>$null
+        if ($coolingPolicy -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
+            $policyValue = switch ([Convert]::ToInt32($matches[1], 16)) {
+                1 { "Aggressive (Maximum Performance)" }
+                2 { "Balanced" }
+                3 { "Passive (Quiet)" }
+                default { "Unknown" }
+            }
+            Write-Host "  Cooling Policy: $policyValue" -ForegroundColor Cyan
+        }
     }
     catch {
         Write-Host "Error getting power settings: $($_.Exception.Message)" -ForegroundColor Red
@@ -143,27 +184,62 @@ function Set-SystemPowerMode {
             throw "Failed to set power mode. Error code: $result"
         }
 
-        # Also set the corresponding power scheme settings
+        # Get the current active scheme GUID
+        $powerScheme = powercfg /getactivescheme
+        $schemeGuid = ($powerScheme -split ' ')[3]
+
+        # Define processor subgroup GUID
+        $processorSubGroupGuid = "54533251-82be-4824-96c1-47b60b740d00"
+        
+        # Try to set power settings based on mode
         switch ($mode) {
             "BestPerformance" {
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 10
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 2
+                try {
+                    # Set processor settings
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMIN 10 2>$null
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMAX 100 2>$null
+                    
+                    # Try to set performance boost mode if available
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PERFBOOSTMODE 2 2>$null
+                    
+                    # Try to set cooling policy if available
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 1 2>$null
+                }
+                catch {
+                    Write-Host "Some performance settings could not be applied" -ForegroundColor Yellow
+                }
             }
             "Balanced" {
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 10
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 1
+                try {
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMIN 10 2>$null
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMAX 100 2>$null
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PERFBOOSTMODE 1 2>$null
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 2 2>$null
+                }
+                catch {
+                    Write-Host "Some balanced settings could not be applied" -ForegroundColor Yellow
+                }
             }
             "BestEfficiency" {
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 99
-                powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 0
+                try {
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMIN 5 2>$null
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMAX 99 2>$null
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PERFBOOSTMODE 0 2>$null
+                    
+                    # Try to set cooling policy if available
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 3 2>$null
+                    
+                    # Try to set GPU power settings if available
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "4faab71a-92e5-4726-b531-224559672d19" 0 2>$null
+                }
+                catch {
+                    Write-Host "Some power efficiency settings could not be applied" -ForegroundColor Yellow
+                }
             }
         }
 
         # Apply changes
-        powercfg /setactive SCHEME_CURRENT
+        powercfg /setactive $schemeGuid 2>$null
         
         Write-Host "Changes made:"
         Get-CurrentPowerSettings
@@ -276,6 +352,69 @@ function Set-MaxProcessorState {
     }
 }
 
+function Set-GraphicsMode {
+    param (
+        [string]$mode
+    )
+    
+    try {
+        Write-Host "`nSetting graphics mode to: $mode" -ForegroundColor Yellow
+        
+        # Ensure the registry key path exists
+        $regPath = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+        if (-not (Test-Path $regPath)) {
+            New-Item -Path $regPath -Force | Out-Null
+        }
+        
+        switch ($mode) {
+            "Integrated" {
+                # Set Windows graphics preference to Power Saving (integrated)
+                Set-ItemProperty -Path $regPath -Name "DirectXUserGlobalSettings" -Value "GpuPreference=1;" -Type String
+            }
+            "NVIDIA" {
+                # Set Windows graphics preference to High Performance (dedicated)
+                Set-ItemProperty -Path $regPath -Name "DirectXUserGlobalSettings" -Value "GpuPreference=2;" -Type String
+            }
+        }
+        
+        Write-Host "Graphics mode changed successfully." -ForegroundColor Green
+        Write-Host "Note: Applications may need to be restarted to use the new graphics preference." -ForegroundColor Yellow
+        Get-GraphicsStatus
+    }
+    catch {
+        Write-Host "Error setting graphics mode: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Get-GraphicsStatus {
+    try {
+        Write-Host "`nCurrent Graphics Status:" -ForegroundColor Cyan
+        
+        # Check if the registry key exists
+        $regPath = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+        if (-not (Test-Path $regPath)) {
+            Write-Host "  Windows Graphics Preference: Not set (using system default)" -ForegroundColor Yellow
+            return
+        }
+        
+        # Get Windows graphics preference
+        $preference = Get-ItemProperty -Path $regPath -Name "DirectXUserGlobalSettings" -ErrorAction SilentlyContinue
+        if ($preference -and $preference.DirectXUserGlobalSettings) {
+            $setting = switch ($preference.DirectXUserGlobalSettings) {
+                "GpuPreference=1;" { "Power Saving (Integrated)" }
+                "GpuPreference=2;" { "High Performance (NVIDIA)" }
+                default { "System Default" }
+            }
+            Write-Host "  Windows Graphics Preference: $setting" -ForegroundColor Cyan
+        } else {
+            Write-Host "  Windows Graphics Preference: Not set (using system default)" -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "Error getting graphics status: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
 # Main program loop
 do {
     Show-Menu
@@ -337,6 +476,36 @@ do {
                     }
                 }
             } while ($profileInput.ToLower() -ne 'b')
+            Clear-Host
+        }
+        '2' {
+            do {
+                Show-GraphicsMenu
+                $graphicsInput = Read-Host "`nPlease select an option"
+                
+                switch ($graphicsInput.ToLower()) {
+                    '1' {
+                        Set-GraphicsMode "Integrated"
+                        Start-Sleep -Seconds 2
+                    }
+                    '2' {
+                        Set-GraphicsMode "NVIDIA"
+                        Start-Sleep -Seconds 2
+                    }
+                    '3' {
+                        Get-GraphicsStatus
+                        Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
+                        Read-Host
+                    }
+                    'b' {
+                        break
+                    }
+                    default {
+                        Write-Host "Invalid selection. Please try again."
+                        Start-Sleep -Seconds 1
+                    }
+                }
+            } while ($graphicsInput.ToLower() -ne 'b')
             Clear-Host
         }
         'r' {
