@@ -103,6 +103,11 @@ function Set-PowerProfile {
                 Set-MaxProcessorState 75  # This will significantly limit CPU power/heat
                 # Set graphics to Integrated
                 Set-GraphicsMode "Integrated"
+                # Explicitly disable Turbo Boost
+                $powerScheme = powercfg /getactivescheme
+                $schemeGuid = ($powerScheme -split ' ')[3]
+                $processorSubGroupGuid = "54533251-82be-4824-96c1-47b60b740d00"
+                powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid "be337238-0d82-4146-a960-4f3749d470c7" 0 2>$null
             }
         }
         
@@ -120,6 +125,32 @@ function Set-PowerProfile {
         # Add pause to see error messages
         Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
         Read-Host
+    }
+}
+
+function Get-TurboBoostStatus {
+    try {
+        $powerScheme = powercfg /getactivescheme
+        $schemeGuid = ($powerScheme -split ' ')[3]
+        $processorSubGroupGuid = "54533251-82be-4824-96c1-47b60b740d00"
+        
+        # Get the current boost mode setting
+        $boostSettings = powercfg /q $schemeGuid $processorSubGroupGuid "be337238-0d82-4146-a960-4f3749d470c7"
+        
+        if ($boostSettings -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
+            $boostValue = [Convert]::ToInt32($matches[1], 16)
+            switch ($boostValue) {
+                0 { return "Disabled" }
+                1 { return "Enabled (Aggressive)" }
+                2 { return "Enabled (Efficient Aggressive)" }
+                3 { return "Enabled (Efficient)" }
+                default { return "Unknown" }
+            }
+        }
+        return "Unknown"
+    }
+    catch {
+        return "Error getting Turbo Boost status"
     }
 }
 
@@ -148,6 +179,7 @@ function Get-CurrentPowerSettings {
         Write-Host "  Maximum Processor State: $currentMax%" -ForegroundColor Cyan
         Write-Host "  Minimum Processor State: $minValue%" -ForegroundColor Cyan
         Write-Host "  System Power Mode: $currentMode" -ForegroundColor Cyan
+        Write-Host "  Turbo Boost: $(Get-TurboBoostStatus)" -ForegroundColor Cyan
         
         # Get and display current GPU preference
         $regPath = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
