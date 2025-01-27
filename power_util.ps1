@@ -35,6 +35,7 @@ function Show-ProfileMenu {
     Write-Host "================ Power Profiles ================"
     Write-Host "1: Performance Mode (Max Performance)"
     Write-Host "2: Battery Saver Mode (Power Efficient)"
+    Write-Host "3: Ultra Quiet Mode (Minimum Fan Speed)"
     Write-Host "B: Back to Main Menu"
     Write-Host "=============================================="
 }
@@ -92,6 +93,14 @@ function Set-PowerProfile {
                 Set-SystemPowerMode "BestEfficiency"
                 # Set max processor state to 99%
                 Set-MaxProcessorState 99
+                # Set graphics to Integrated
+                Set-GraphicsMode "Integrated"
+            }
+            "UltraQuiet" {
+                # Set system power mode to Best Power Efficiency
+                Set-SystemPowerMode "BestEfficiency"
+                # Set max processor state even lower
+                Set-MaxProcessorState 75  # This will significantly limit CPU power/heat
                 # Set graphics to Integrated
                 Set-GraphicsMode "Integrated"
             }
@@ -169,6 +178,11 @@ function Get-CurrentPowerSettings {
             }
             Write-Host "  Cooling Policy: $policyValue" -ForegroundColor Cyan
         }
+
+        $temp = Get-CurrentTemperature
+        if ($temp) {
+            Write-Host "  Current CPU Temperature: ${temp}°C" -ForegroundColor Cyan
+        }
     }
     catch {
         Write-Host "Error getting power settings: $($_.Exception.Message)" -ForegroundColor Red
@@ -217,6 +231,9 @@ function Set-SystemPowerMode {
                     
                     # Try to set cooling policy if available
                     powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 1 2>$null
+                    
+                    # Set cooling mode threshold
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6" 75 2>$null
                 }
                 catch {
                     Write-Host "Some performance settings could not be applied" -ForegroundColor Yellow
@@ -228,6 +245,12 @@ function Set-SystemPowerMode {
                     powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PROCTHROTTLEMAX 100 2>$null
                     powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid PERFBOOSTMODE 1 2>$null
                     powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 2 2>$null
+                    
+                    # Set cooling policy to passive/active mix
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 2 2>$null
+                    
+                    # Set cooling mode threshold
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6" 85 2>$null
                 }
                 catch {
                     Write-Host "Some balanced settings could not be applied" -ForegroundColor Yellow
@@ -244,6 +267,15 @@ function Set-SystemPowerMode {
                     
                     # Try to set GPU power settings if available
                     powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "4faab71a-92e5-4726-b531-224559672d19" 0 2>$null
+                    
+                    # Set cooling policy to passive (prioritize lower fan speeds)
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "94d3a615-a899-4ac5-ae2b-e4d8f634367f" 3 2>$null
+                    
+                    # Set cooling mode threshold (higher temperature before fan speed increases)
+                    powercfg /setacvalueindex $schemeGuid "238c9fa8-0aad-41ed-83f4-97be242c8f20" "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6" 95 2>$null
+                    
+                    # Reduce processor performance boost
+                    powercfg /setacvalueindex $schemeGuid $processorSubGroupGuid "be337238-0d82-4146-a960-4f3749d470c7" 0 2>$null
                 }
                 catch {
                     Write-Host "Some power efficiency settings could not be applied" -ForegroundColor Yellow
@@ -428,6 +460,21 @@ function Get-GraphicsStatus {
     }
 }
 
+function Get-CurrentTemperature {
+    try {
+        $temp = Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace "root/wmi"
+        if ($temp) {
+            # Convert tenths of Kelvin to Celsius
+            $celsius = ($temp.CurrentTemperature / 10) - 273.15
+            return [math]::Round($celsius, 1)
+        }
+        return $null
+    }
+    catch {
+        return $null
+    }
+}
+
 # Main program loop
 do {
     Show-Menu
@@ -449,6 +496,10 @@ do {
                     }
                     '2' {
                         Set-PowerProfile "BatterySaver"
+                        break
+                    }
+                    '3' {
+                        Set-PowerProfile "UltraQuiet"
                         break
                     }
                     'b' {
