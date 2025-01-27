@@ -75,12 +75,16 @@ function Set-PowerProfile {
                 Set-SystemPowerMode "BestPerformance"
                 # Set max processor state to 100%
                 Set-MaxProcessorState 100
+                # Set graphics to NVIDIA GPU
+                Set-GraphicsMode "NVIDIA"
             }
             "BatterySaver" {
                 # Set system power mode to Best Power Efficiency
                 Set-SystemPowerMode "BestEfficiency"
                 # Set max processor state to 99%
                 Set-MaxProcessorState 99
+                # Set graphics to Integrated
+                Set-GraphicsMode "Integrated"
             }
         }
         
