@@ -25,8 +25,7 @@ function Show-Menu {
     Clear-Host
     Write-Host "================ Power Management Utility ================"
     Write-Host "1: Switch Power Profile"
-    Write-Host "2: Graphics Settings"
-    Write-Host "R: Restore Default Power Settings"
+    Write-Host "2: Granular Settings"
     Write-Host "Q: Quit"
     Write-Host "====================================================="
 }
@@ -36,7 +35,6 @@ function Show-ProfileMenu {
     Write-Host "================ Power Profiles ================"
     Write-Host "1: Performance Mode (Max Performance)"
     Write-Host "2: Battery Saver Mode (Power Efficient)"
-    Write-Host "3: System Power Mode (Windows Power Mode)"
     Write-Host "B: Back to Main Menu"
     Write-Host "=============================================="
 }
@@ -59,6 +57,17 @@ function Show-GraphicsMenu {
     Write-Host "3: Show Current Graphics Status"
     Write-Host "B: Back to Main Menu"
     Write-Host "================================================"
+}
+
+function Show-GranularSettingsMenu {
+    Clear-Host
+    Write-Host "================ Granular Settings ================"
+    Write-Host "1: System Power Mode (Windows Power Mode)"
+    Write-Host "2: Graphics Settings"
+    Write-Host "3: Toggle Max CPU State (100%/99%)"
+    Write-Host "4: Restore Default Power Settings"
+    Write-Host "B: Back to Main Menu"
+    Write-Host "=============================================="
 }
 
 function Set-PowerProfile {
@@ -442,7 +451,24 @@ do {
                         Set-PowerProfile "BatterySaver"
                         break
                     }
-                    '3' {
+                    'b' {
+                        break
+                    }
+                    default {
+                        Write-Host "Invalid selection. Please try again."
+                        Start-Sleep -Seconds 1
+                    }
+                }
+            } while ($profileInput.ToLower() -ne 'b')
+            Clear-Host
+        }
+        '2' {
+            do {
+                Show-GranularSettingsMenu
+                $granularInput = Read-Host "`nPlease select an option"
+                
+                switch ($granularInput.ToLower()) {
+                    '1' {
                         do {
                             Show-SystemPowerModeMenu
                             $modeInput = Read-Host "`nPlease select a power mode"
@@ -469,37 +495,55 @@ do {
                                 }
                             }
                         } while ($modeInput.ToLower() -ne 'b')
-                        break
-                    }
-                    'b' {
-                        break
-                    }
-                    default {
-                        Write-Host "Invalid selection. Please try again."
-                        Start-Sleep -Seconds 1
-                    }
-                }
-            } while ($profileInput.ToLower() -ne 'b')
-            Clear-Host
-        }
-        '2' {
-            do {
-                Show-GraphicsMenu
-                $graphicsInput = Read-Host "`nPlease select an option"
-                
-                switch ($graphicsInput.ToLower()) {
-                    '1' {
-                        Set-GraphicsMode "Integrated"
-                        Start-Sleep -Seconds 2
+                        Clear-Host
                     }
                     '2' {
-                        Set-GraphicsMode "NVIDIA"
-                        Start-Sleep -Seconds 2
+                        do {
+                            Show-GraphicsMenu
+                            $graphicsInput = Read-Host "`nPlease select an option"
+                            
+                            switch ($graphicsInput.ToLower()) {
+                                '1' {
+                                    Set-GraphicsMode "Integrated"
+                                    Start-Sleep -Seconds 2
+                                }
+                                '2' {
+                                    Set-GraphicsMode "NVIDIA"
+                                    Start-Sleep -Seconds 2
+                                }
+                                '3' {
+                                    Get-GraphicsStatus
+                                    Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
+                                    Read-Host
+                                }
+                                'b' {
+                                    break
+                                }
+                                default {
+                                    Write-Host "Invalid selection. Please try again."
+                                    Start-Sleep -Seconds 1
+                                }
+                            }
+                        } while ($graphicsInput.ToLower() -ne 'b')
+                        Clear-Host
                     }
                     '3' {
-                        Get-GraphicsStatus
+                        $currentMax = Get-CurrentMaxProcessorState
+                        if ($currentMax -eq 100) {
+                            Write-Host "`nSetting maximum processor state to 99%..." -ForegroundColor Yellow
+                            Set-MaxProcessorState 99
+                        } else {
+                            Write-Host "`nSetting maximum processor state to 100%..." -ForegroundColor Yellow
+                            Set-MaxProcessorState 100
+                        }
+                        Write-Host "Changes made:"
+                        Get-CurrentPowerSettings
                         Write-Host "`nPress Enter to continue..." -ForegroundColor Yellow
                         Read-Host
+                        Clear-Host
+                    }
+                    '4' {
+                        Restore-DefaultPowerSettings
                     }
                     'b' {
                         break
@@ -509,11 +553,8 @@ do {
                         Start-Sleep -Seconds 1
                     }
                 }
-            } while ($graphicsInput.ToLower() -ne 'b')
+            } while ($granularInput.ToLower() -ne 'b')
             Clear-Host
-        }
-        'r' {
-            Restore-DefaultPowerSettings
         }
         'q' {
             return
